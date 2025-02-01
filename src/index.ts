@@ -245,7 +245,7 @@ export function apply(ctx: Context) {
         });
 
         // 根据不同类型计算XP值并排序
-        const sortedUsers = validUsers.sort((a, b) => {
+        const sortedUsers = validUsers.sort(async (a, b) => {
             let xpA: number, xpB: number;
             if (type === 'daily') {
                 xpA = a.yesterday_exp;
@@ -265,8 +265,9 @@ export function apply(ctx: Context) {
         for (let i = 0; i < sortedUsers.length; i++) {
             const user = sortedUsers[i];
             const userId = user.user_did;
+            const data = await getUserInfoById(userId);
             const xp = type === 'daily' ? user.yesterday_exp : user.lastweek_exp;
-            rankInfo += `#${i + 1}. ${await getUserInfoById(userId).username}: ${xp}\n`;
+            rankInfo += `#${i + 1}. ${data.username}: ${xp}\n`;
         }
 
         if (rankInfo === '') {

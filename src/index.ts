@@ -230,8 +230,8 @@ export function apply(ctx: Context) {
     });
 
     // 定义 ranking 指令及其别名
-    ctx.command('ranking [type:string]', '获取XP排行榜', {
-        alias: ['rk', 'daily', 'weekly']
+    ctx.command('ranking [type:string]', '获取EXP排行榜', {
+        alias: ['rk']
     }).action(async ({ session }, type = 'daily') => {
         const users = await ctx.database.get('duolingo', {});
 
@@ -262,16 +262,16 @@ export function apply(ctx: Context) {
         let rankInfo = '';
         for (let i = 0; i < sortedUsers.length; i++) {
             const user = sortedUsers[i];
-            const userId = user.user_qid;
-            const xp = type === 'daily' || type === 'rk' || type === 'daily'? user.yesterday_exp : user.lastweek_exp;
-            rankInfo += `${i + 1}. QQ号: ${userId}, XP: ${xp}\n`;
+            const userId = user.user_did;
+            const xp = type === 'daily' || type === 'daily'? user.yesterday_exp : user.lastweek_exp;
+            rankInfo += `#${i + 1}. ${getUserInfoById(userId)}, EXP: ${xp}\n`;
         }
 
         if (rankInfo === '') {
             return '没有符合条件的用户数据';
         }
 
-        return `XP排行榜（${type === 'daily' || type === 'rk'? '今日' : '本周'}）：\n${rankInfo}`;
+        return `EXP 排行榜（${type === 'daily' || type === 'rk'? '今日' : '本周'}）：\n${rankInfo}`;
     });
 
     // 定义 duolingo/info 命令

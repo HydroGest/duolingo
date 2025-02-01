@@ -320,7 +320,7 @@ ctx.model.extend('duolingo', {
 
 			if (!username) {
 
-				const userQid = session.event.user.id
+				const userQid = Number(session.event.user.id)
 
 
 
@@ -377,7 +377,7 @@ ${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！
 
 			if (!username) {
 
-				const userQid = session.event.user.id
+				const userQid = Number(session.event.user.id)
 
 
 
@@ -434,7 +434,7 @@ EXP 目标：${streakData.xpGoal}`;
 
 			// 获取用户QQ ID
 
-			const userId = session.event.user.id
+			const userId = Number(session.event.user.id)
 
 
 

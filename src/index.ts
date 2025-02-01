@@ -254,11 +254,11 @@ export function apply(ctx: Context) {
         const sortedUsers = await validUsers.sort((a, b) => {
             let xpA: number, xpB: number;
             if (type === 'daily') {
-                xpA = a.yesterday_exp;
-                xpB = b.yesterday_exp;
+                xpA = extras.get(a.user_did).totalXp - a.yesterday_exp;
+                xpB = extras.get(b.user_did).totalXp - b.yesterday_exp;
             } else if (type === 'weekly') {
-                xpA = a.lastweek_exp;
-                xpB = b.lastweek_exp;
+                xpA = extras.get(a.user_did).totalXp - a.lastweek_exp;
+                xpB = extras.get(b.user_did).totalXp - b.lastweek_exp;
             } else {
                 xpA = extras.get(a.user_did).totalXp;
                 xpB = extras.get(b.user_did).totalXp;
@@ -271,7 +271,7 @@ export function apply(ctx: Context) {
         for (let i = 0; i < sortedUsers.length; i++) {
             const user = sortedUsers[i];
             const userId = user.user_did;
-            const xp = type === 'daily' ? user.yesterday_exp :  (type === 'weekly' ? user.lastweek_exp : extras.get(userId).totalXp);
+            const xp = extras.get(userId).totalXp - (type === 'daily' ? user.yesterday_exp :  (type === 'weekly' ? user.lastweek_exp : 0));
             rankInfo += `#${i + 1}. ${extras.get(userId).username}: ${xp}\n`;
         }
 

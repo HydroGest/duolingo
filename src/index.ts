@@ -233,11 +233,11 @@ export function apply(ctx: Context) {
       .alias('rk')
       .action(async ({ session }, type = 'total') => {
         const users = await ctx.database.get('duolingo', {});
-        let extras: {[key: number]: UserResponse};
+        let extras: Map<number, UserResponse>;
         if (type === "total") {
             session?.send("请稍候，数据获取中...")
             for (let i = 0; i < users.length; i++) {
-                extras[users[i].user_did] = await getUserInfoById(users[i].user_did);
+                extras.set(users[i].user_did, await getUserInfoById(users[i].user_did));
             }
         }
         // 过滤掉数据为0的用户
@@ -260,8 +260,8 @@ export function apply(ctx: Context) {
                 xpA = a.lastweek_exp;
                 xpB = b.lastweek_exp;
             } else {
-                xpA = extras[a.user_did].totalXp;
-                xpB = extras[b.user_did].totalXp;
+                xpA = extras.get(a.user_did).totalXp;
+                xpB = extras.get(b.user_did).totalXp;
             }
             return xpB - xpA;
         });
@@ -272,7 +272,7 @@ export function apply(ctx: Context) {
             const user = sortedUsers[i];
             const userId = user.user_did;
             const xp = type === 'daily' ? user.yesterday_exp : user.lastweek_exp;
-            rankInfo += `#${i + 1}. ${extras[userId].username}: ${xp}\n`;
+            rankInfo += `#${i + 1}. ${extras.get(userId).username}: ${xp}\n`;
         }
 
         if (rankInfo === '') {

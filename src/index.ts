@@ -156,7 +156,7 @@ declare module 'koishi' {
 
 	interface Tables {
 
-		schedule: Schedule
+		duolingo: Duolingo 
 
 	}
 

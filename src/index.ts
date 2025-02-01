@@ -230,9 +230,9 @@ export function apply(ctx: Context) {
     });
 
     // 定义 ranking 指令及其别名
-    ctx.command('ranking [type:string]', '获取EXP排行榜', {
-        alias: ['rk']
-    }).action(async ({ session }, type = 'daily') => {
+    ctx.command('duolingo/ranking [type:string]', '获取EXP排行榜')
+      .alias('rk')
+      .action(async ({ session }, type = 'daily') => {
         const users = await ctx.database.get('duolingo', {});
 
         // 过滤掉数据为0的用户

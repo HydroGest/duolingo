@@ -233,7 +233,7 @@ export function apply(ctx: Context) {
       .alias('rk')
       .action(async ({ session }, type = 'total') => {
         const users = await ctx.database.get('duolingo', {});
-        let extras: Map<number, UserResponse>;
+        let extras = Map<number, UserResponse>();
         if (type === "total") {
             session?.send("请稍候，数据获取中...")
             for (let i = 0; i < users.length; i++) {

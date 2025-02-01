@@ -297,11 +297,16 @@ ctx.model.extend('duolingo', {
 
 	// 各字段的类型声明
 
-	id: 'unsigned',
+	id: {
+		type: 'unsigned',
+    primary: true,
+    autoInc: true
+   },
 
-	user_qid: 'unsigned',
 
-	user_did: 'unsigned',
+	user_qid: 'integer',
+
+	user_did: 'integer',
 
 	yesterday_exp: 'unsigned',
 

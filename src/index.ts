@@ -293,6 +293,49 @@ function convertTimestampToChineseDate(timestamp: number): string {
 }
 
 export function apply(ctx: Context) {
+
+  // 计算到下一个目标时间的延迟
+function getDelayToNext(hour: number) {
+    const now = new Date()
+    const target = new Date(now)
+    target.setHours(hour, 0, 0, 0)
+    if (now > target) target.setDate(target.getDate() + 1)
+    return target.getTime() - now.getTime()
+}
+
+// 首次延迟执行
+ctx.setTimeout(() => {
+    ctx.setInterval(async () => {
+        const now = new Date()
+        const isSunday = now.getDay() === 0 // 0 表示星期日
+        
+        // 获取所有绑定用户
+        const users = await ctx.database.get('duolingo', {})
+        
+        for (const user of users) {
+            try {
+                // 获取最新用户数据
+                const data = await getUserInfoById(user.user_did)
+                if (!data) continue
+                
+                // 更新每日经验
+                await ctx.database.set('duolingo', 
+                    { user_qid: user.user_qid },
+                    { 
+                        yesterday_exp: data.totalXp,
+                        // 如果是周日则同时更新周经验
+                        ...(isSunday && { lastweek_exp: data.totalXp })
+                    }
+                )
+                
+                ctx.logger.info(`用户 ${user.user_qid} 经验更新成功`)
+            } catch (error) {
+                ctx.logger.warn(`用户 ${user.user_qid} 更新失败: ${error.message}`)
+            }
+        }
+    }, 24 * 60 * 60 * 1000) // 24 小时间隔
+    
+}, getDelayToNext(0)) // 凌晨 0 点执行
 ctx.model.extend('duolingo', {
 
 	// 各字段的类型声明

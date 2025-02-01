@@ -6,6 +6,8 @@ export interface Config { }
 
 export const Config: Schema<Config> = Schema.object({})
 
+export const inject = ['database']
+
 // 定义响应数据的类型
 interface UserResponse {
     achievements: any[];
@@ -78,6 +80,30 @@ interface StreakData {
     updatedTimestamp: number;
     startTimestamp: number;
 }
+
+declare module 'koishi' {
+  interface Tables {
+    schedule: Schedule
+  }
+}
+
+// 这里是新增表的接口类型
+export interface Schedule {
+  id: number
+  user_qid: number
+  user_did: string
+  yesterday_exp: number
+  lastweek_exp: number
+}
+
+ctx.model.extend('schedule', {
+  // 各字段的类型声明
+  id: 'unsigned',
+  user_qid: 'unsigned',
+  user_did: 'string',
+  yesterday_exp: 'unsigned',
+  lastweek_exp: 'unsigned'
+})
 
 function isTimestampToday(timestamp: number): boolean {
     // 将传入的时间戳转换为 Date 对象，注意时间戳通常以秒为单位，而 Date 构造函数需要毫秒，所以要乘以 1000

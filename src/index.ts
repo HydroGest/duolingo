@@ -178,22 +178,6 @@ export interface Duolingo {
 
 }
 
-ctx.model.extend('duolingo', {
-
-	// 各字段的类型声明
-
-	id: 'unsigned',
-
-	user_qid: 'unsigned',
-
-	user_did: 'unsigned',
-
-	yesterday_exp: 'unsigned',
-
-	lastweek_exp: 'unsigned'
-
-})
-
 function isTimestampToday(timestamp: number): boolean {
 
 	// 将传入的时间戳转换为 Date 对象，注意时间戳通常以秒为单位，而 Date 构造函数需要毫秒，所以要乘以 1000
@@ -309,7 +293,21 @@ function convertTimestampToChineseDate(timestamp: number): string {
 }
 
 export function apply(ctx: Context) {
+ctx.model.extend('duolingo', {
 
+	// 各字段的类型声明
+
+	id: 'unsigned',
+
+	user_qid: 'unsigned',
+
+	user_did: 'unsigned',
+
+	yesterday_exp: 'unsigned',
+
+	lastweek_exp: 'unsigned'
+
+})
 	ctx.command('duolingo/info <username:string>')
 
 		.action(async ({

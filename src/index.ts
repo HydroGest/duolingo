@@ -254,8 +254,8 @@ export function apply(ctx: Context) {
                 xpA = a.lastweek_exp;
                 xpB = b.lastweek_exp;
             } else {
-                xpA = getUserInfoById(a.user_did);
-                xpB = getUserInfoById(b.user_did);
+                xpA = await getUserInfoById(a.user_did);
+                xpB = await getUserInfoById(b.user_did);
             }
             return xpB - xpA;
         });
@@ -266,7 +266,7 @@ export function apply(ctx: Context) {
             const user = sortedUsers[i];
             const userId = user.user_did;
             const xp = type === 'daily' ? user.yesterday_exp : user.lastweek_exp;
-            rankInfo += `#${i + 1}. ${getUserInfoById(userId).username}: ${xp}\n`;
+            rankInfo += `#${i + 1}. ${await getUserInfoById(userId).username}: ${xp}\n`;
         }
 
         if (rankInfo === '') {

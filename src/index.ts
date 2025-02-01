@@ -232,12 +232,11 @@ export function apply(ctx: Context) {
 
     ctx.command('duolingo/ranking [type:string]', '获取EXP排行榜')
       .alias('rk')
-      .action(async ({ session }, type = 'total') => {
+      .usage("type 可选: daily, weekly, total")
+      .action(async ({ session }, type = 'daily') => {
         const users = await ctx.database.get('duolingo', {});
         let extras = new Map<number, UserResponse>();
-        if (type === "total") {
-            session?.send("请稍候，数据获取中...")
-        }
+        session?.send("少女祈祷中...");
         for (let i = 0; i < users.length; i++) {
                 extras.set(users[i].user_did, await getUserInfoById(users[i].user_did));
         }

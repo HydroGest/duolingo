@@ -271,7 +271,7 @@ export function apply(ctx: Context) {
         for (let i = 0; i < sortedUsers.length; i++) {
             const user = sortedUsers[i];
             const userId = user.user_did;
-            const xp = type === 'daily' ? user.yesterday_exp : user.lastweek_exp;
+            const xp = type === 'daily' ? user.yesterday_exp :  (type === 'weekly' ? user.lastweek_exp : extras.get(userId).totalXp);
             rankInfo += `#${i + 1}. ${extras.get(userId).username}: ${xp}\n`;
         }
 

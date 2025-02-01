@@ -236,9 +236,9 @@ export function apply(ctx: Context) {
         let extras = new Map<number, UserResponse>();
         if (type === "total") {
             session?.send("请稍候，数据获取中...")
-            for (let i = 0; i < users.length; i++) {
+        }
+        for (let i = 0; i < users.length; i++) {
                 extras.set(users[i].user_did, await getUserInfoById(users[i].user_did));
-            }
         }
         // 过滤掉数据为0的用户
         const validUsers = users.filter(user => {

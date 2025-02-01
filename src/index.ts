@@ -167,7 +167,7 @@ ID：${data.id}
 ---
 ${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！" : "Ta 今天还没有刷题呢，赶紧去续杯吧~"}
 ---
-输入"streak <用户名>"获取详细连胜信息。`;
+输入"streak ${username}"获取详细连胜信息。`;
             return template;
         });
     ctx.command('duolingo/streak <username:string>')

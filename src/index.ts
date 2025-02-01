@@ -211,6 +211,7 @@ async function updateUserExperience(ctx: Context) {
 export function apply(ctx: Context) {
     // 首次延迟执行
     ctx.setTimeout(() => {
+        updateUserExperience(ctx);
         ctx.setInterval(() => {
             updateUserExperience(ctx);
         }, 24 * 60 * 60 * 1000); // 24 小时间隔

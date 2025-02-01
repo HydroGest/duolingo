@@ -396,4 +396,10 @@ QQ 号：${userId}
 Duolingo 用户名：${username}
 对应 ID：${duolingoId}`;
         });
+
+    ctx.command('duolingo/update')
+      .action(async ({ session }) => {
+            updateUserExperience();
+            return "更新操作成功";
+        });
 }

@@ -229,31 +229,33 @@ export function apply(ctx: Context) {
         autoInc: true // 使用自增主键 
     });
 
-    // 定义 ranking 指令及其别名
     ctx.command('duolingo/ranking [type:string]', '获取EXP排行榜')
       .alias('rk')
-      .action(async ({ session }, type = 'daily') => {
+      .action(async ({ session }, type = 'total') => {
         const users = await ctx.database.get('duolingo', {});
-
+        if (type === "total") session?.send("请稍候，数据获取中...")
         // 过滤掉数据为0的用户
         const validUsers = users.filter(user => {
-            if (type === 'daily' || type === 'rk' || type === 'daily') {
+            if (type === 'daily') {
                 return user.yesterday_exp > 0;
             } else if (type === 'weekly') {
                 return user.lastweek_exp > 0;
             }
-            return false;
+            return true;
         });
 
         // 根据不同类型计算XP值并排序
         const sortedUsers = validUsers.sort((a, b) => {
             let xpA: number, xpB: number;
-            if (type === 'daily' || type === 'rk' || type === 'daily') {
+            if (type === 'daily') {
                 xpA = a.yesterday_exp;
                 xpB = b.yesterday_exp;
-            } else {
+            } else if (type === 'weekly') {
                 xpA = a.lastweek_exp;
                 xpB = b.lastweek_exp;
+            } else {
+                xpA = getUserInfoById(a.user_did);
+                xpB = getUserInfoById(b.user_did);
             }
             return xpB - xpA;
         });
@@ -263,15 +265,15 @@ export function apply(ctx: Context) {
         for (let i = 0; i < sortedUsers.length; i++) {
             const user = sortedUsers[i];
             const userId = user.user_did;
-            const xp = type === 'daily' || type === 'daily'? user.yesterday_exp : user.lastweek_exp;
-            rankInfo += `#${i + 1}. ${getUserInfoById(userId)}, EXP: ${xp}\n`;
+            const xp = type === 'daily' ? user.yesterday_exp : user.lastweek_exp;
+            rankInfo += `#${i + 1}. ${getUserInfoById(userId).username}: ${xp}\n`;
         }
 
         if (rankInfo === '') {
             return '没有符合条件的用户数据';
         }
 
-        return `EXP 排行榜（${type === 'daily' || type === 'rk'? '今日' : '本周'}）：\n${rankInfo}`;
+        return `EXP 排行榜（${type === 'daily' ? '今日' : (type === 'weekly' ? "本周" : "总榜")}）：\n${rankInfo}`;
     });
 
     // 定义 duolingo/info 命令

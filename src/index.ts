@@ -101,12 +101,9 @@ export interface Duolingo {
 
 // 判断时间戳是否为今天
 function isTimestampToday(timestamp: number): boolean {
-    // 将传入的时间戳转换为 Date 对象，注意时间戳通常以秒为单位，而 Date 构造函数需要毫秒，所以要乘以 1000
     const targetDate = new Date(timestamp * 1000);
-    // 获取当前日期的 Date 对象
     const currentDate = new Date();
 
-    // 分别获取目标日期和当前日期的年、月、日
     const targetYear = targetDate.getFullYear();
     const targetMonth = targetDate.getMonth();
     const targetDay = targetDate.getDate();
@@ -114,7 +111,6 @@ function isTimestampToday(timestamp: number): boolean {
     const currentMonth = currentDate.getMonth();
     const currentDay = currentDate.getDate();
 
-    // 比较年、月、日是否都相同，如果都相同则表示是今天
     return targetYear === currentYear && targetMonth === currentMonth && targetDay === currentDay;
 }
 
@@ -162,13 +158,11 @@ async function getUserId(username: string): Promise<number | null> {
 
 // 将时间戳转换为中文日期格式
 function convertTimestampToChineseDate(timestamp: number): string {
-    // 由于 JavaScript 的 Date 对象接受的时间戳是以毫秒为单位，所以这里要把秒转换为毫秒
     const date = new Date(timestamp * 1000);
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
 
-    // 拼接成中文日期格式
     return `${year}年${month}月${day}日`;
 }
 
@@ -200,14 +194,12 @@ async function updateUserExperience(ctx: Context) {
             if (!data) continue;
 
             // 更新每日经验
-            await ctx.database.set('duolingo', 
+            await ctx.database.set('duolingo',
                 { user_qid: user.user_qid },
-                { 
+                {
                     yesterday_exp: data.totalXp,
-                    // 如果是周日则同时更新周经验
                     ...(isSunday && { lastweek_exp: data.totalXp })
-                }
-            );
+                });
 
             ctx.logger.info(`用户 ${user.user_qid} 经验更新成功`);
         } catch (error) {
@@ -232,14 +224,59 @@ export function apply(ctx: Context) {
         user_did: 'integer',
         yesterday_exp: 'unsigned',
         lastweek_exp: 'unsigned'
-    }, { 
+    }, {
         primary: "id", // 主键名 
         autoInc: true // 使用自增主键 
     });
 
+    // 定义 ranking 指令及其别名
+    ctx.command('ranking [type:string]', '获取XP排行榜', {
+        alias: ['rk', 'daily', 'weekly']
+    }).action(async ({ session }, type = 'daily') => {
+        const users = await ctx.database.get('duolingo', {});
+
+        // 过滤掉数据为0的用户
+        const validUsers = users.filter(user => {
+            if (type === 'daily' || type === 'rk' || type === 'daily') {
+                return user.yesterday_exp > 0;
+            } else if (type === 'weekly') {
+                return user.lastweek_exp > 0;
+            }
+            return false;
+        });
+
+        // 根据不同类型计算XP值并排序
+        const sortedUsers = validUsers.sort((a, b) => {
+            let xpA: number, xpB: number;
+            if (type === 'daily' || type === 'rk' || type === 'daily') {
+                xpA = a.yesterday_exp;
+                xpB = b.yesterday_exp;
+            } else {
+                xpA = a.lastweek_exp;
+                xpB = b.lastweek_exp;
+            }
+            return xpB - xpA;
+        });
+
+        // 生成排行榜信息
+        let rankInfo = '';
+        for (let i = 0; i < sortedUsers.length; i++) {
+            const user = sortedUsers[i];
+            const userId = user.user_qid;
+            const xp = type === 'daily' || type === 'rk' || type === 'daily'? user.yesterday_exp : user.lastweek_exp;
+            rankInfo += `${i + 1}. QQ号: ${userId}, XP: ${xp}\n`;
+        }
+
+        if (rankInfo === '') {
+            return '没有符合条件的用户数据';
+        }
+
+        return `XP排行榜（${type === 'daily' || type === 'rk'? '今日' : '本周'}）：\n${rankInfo}`;
+    });
+
     // 定义 duolingo/info 命令
     ctx.command('duolingo/info <username:string>')
-       .action(async ({ session }, username) => {
+      .action(async ({ session }, username) => {
             let userId: number;
 
             if (!username) {
@@ -270,16 +307,16 @@ ID：${data.id}
 当前正在学习：${data.courses.map(course => course.title).join(', ')}
 最近刷题：${convertTimestampToChineseDate(data.streakData.updatedTimestamp)}
 ---
-${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！" : "Ta 今天还没有刷题呢，赶紧去续杯吧~"}
+${isTimestampToday(data.streakData.updatedTimestamp)? "Ta 今天续杯成功！" : "Ta 今天还没有刷题呢，赶紧去续杯吧~"}
 ---
-输入"streak${username ? " " + username : ""}"获取详细连胜信息。`;
+输入"streak${username? " " + username : ""}"获取详细连胜信息。`;
 
             return template;
         });
 
     // 定义 duolingo/streak 命令
     ctx.command('duolingo/streak <username:string>')
-       .action(async ({ session }, username) => {
+      .action(async ({ session }, username) => {
             let userId: number;
 
             if (!username) {
@@ -320,7 +357,7 @@ EXP 目标：${streakData.xpGoal}`;
 
     // 定义 duolingo/bind 命令
     ctx.command('duolingo/bind <username:string>')
-       .action(async ({ session }, username) => {
+      .action(async ({ session }, username) => {
             // 获取用户 QQ ID
             const userId = Number(session.event.user.id);
 

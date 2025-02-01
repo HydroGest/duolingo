@@ -297,9 +297,8 @@ ctx.model.extend('duolingo', {
 
 	// 各字段的类型声明
 
-	id: 'unsigned'
-
-
+	id: 'unsigned',
+  
 	user_qid: 'integer',
 
 	user_did: 'integer',

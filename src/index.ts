@@ -297,11 +297,7 @@ ctx.model.extend('duolingo', {
 
 	// 各字段的类型声明
 
-	id: {
-		type: 'unsigned',
-    primary: true,
-    autoInc: true
-   },
+	id: 'unsigned'
 
 
 	user_qid: 'integer',
@@ -312,7 +308,11 @@ ctx.model.extend('duolingo', {
 
 	lastweek_exp: 'unsigned'
 
-})
+}, { 
+       primary: "id", // 主键名 
+       autoInc: true,       // 使用自增主键 
+       }
+)
 	ctx.command('duolingo/info <username:string>')
 
 		.action(async ({

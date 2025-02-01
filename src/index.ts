@@ -190,7 +190,7 @@ ${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！
   - 结束日期：${streakData.longestStreak.endDate}
   - 连胜长度：${streakData.longestStreak.length} 天
   - 达成日期：${streakData.longestStreak.achieveDate}
-XP 目标：${streakData.xpGoal}`;
+EXP 目标：${streakData.xpGoal}`;
             return template;
         });
 }

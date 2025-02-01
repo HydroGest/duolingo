@@ -88,7 +88,7 @@ declare module 'koishi' {
 }
 
 // 这里是新增表的接口类型
-export interface Schedule {
+export interface Duolingo {
   id: number
   user_qid: number
   user_did: string
@@ -96,7 +96,7 @@ export interface Schedule {
   lastweek_exp: number
 }
 
-ctx.model.extend('schedule', {
+ctx.model.extend('duolingo', {
   // 各字段的类型声明
   id: 'unsigned',
   user_qid: 'unsigned',

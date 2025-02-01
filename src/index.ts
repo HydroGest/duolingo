@@ -91,7 +91,7 @@ declare module 'koishi' {
 export interface Duolingo {
   id: number
   user_qid: number
-  user_did: string
+  user_did: number
   yesterday_exp: number
   lastweek_exp: number
 }
@@ -100,7 +100,7 @@ ctx.model.extend('duolingo', {
   // 各字段的类型声明
   id: 'unsigned',
   user_qid: 'unsigned',
-  user_did: 'string',
+  user_did: 'unsigned',
   yesterday_exp: 'unsigned',
   lastweek_exp: 'unsigned'
 })

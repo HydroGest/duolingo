@@ -2,7 +2,7 @@ import { Context, Schema } from 'koishi'
 
 export const name = 'duolingo'
 
-export interface Config {}
+export interface Config { }
 
 export const Config: Schema<Config> = Schema.object({})
 
@@ -150,21 +150,47 @@ function convertTimestampToChineseDate(timestamp: number): string {
 export function apply(ctx: Context) {
     ctx.command('duolingo/info <username:string>')
         .action(async ({ session }, username) => {
-            session?.send("正在搜索...");
+            // await session?.send("正在搜索...");
             const userId = await getUserId(username);
             const data = await getUserInfoById(userId);
+            if (!data) {
+                return "未找到该用户信息。";
+            }
             const template = `用户名：${data.username}
 ID：${data.id}
 注册日期：${convertTimestampToChineseDate(data.creationDate)}
 当前连胜：${data.streak}
-连胜纪录：${data.streakData.longestStreak}
+连胜纪录：${data.streakData.longestStreak.length} 天（从 ${data.streakData.longestStreak.startDate} 到 ${data.streakData.longestStreak.endDate}）
 总 EXP：${data.totalXp}
 当前正在学习：${data.courses.map(course => course.title).join(', ')}
 最近刷题：${convertTimestampToChineseDate(data.streakData.updatedTimestamp)}
 ---
 ${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！" : "Ta 今天还没有刷题呢，赶紧去续杯吧~"}
 ---
-输入"streak"获取详细连胜信息。`;
+输入"streak <用户名>"获取详细连胜信息。`;
             return template;
-        })
+        });
+    ctx.command('duolingo/streak <username:string>')
+        .action(async ({ session }, username) => {
+            // session?.send("正在搜索...");
+            const userId = await getUserId(username);
+            const data = await getUserInfoById(userId);
+            if (!data) {
+                return "未找到该用户信息。";
+            }
+            const streakData = data.streakData;
+            const template = `用户名：${data.username}
+当前连胜信息：
+  - 开始日期：${streakData.currentStreak.startDate}
+  - 结束日期：${streakData.currentStreak.endDate}
+  - 连胜长度：${streakData.currentStreak.length} 天
+  - 最后延长日期：${streakData.currentStreak.lastExtendedDate}
+最长连胜信息：
+  - 开始日期：${streakData.longestStreak.startDate}
+  - 结束日期：${streakData.longestStreak.endDate}
+  - 连胜长度：${streakData.longestStreak.length} 天
+  - 达成日期：${streakData.longestStreak.achieveDate}
+XP 目标：${streakData.xpGoal}`;
+            return template;
+        });
 }

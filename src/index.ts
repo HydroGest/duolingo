@@ -219,4 +219,34 @@ ${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！
 EXP 目标：${streakData.xpGoal}`;
             return template;
         });
+    ctx.command('duolingo/bind <username:string>')
+    .action(async ({ session }, username) => {
+        // 获取用户QQ ID
+        const userId = session.user.id
+        
+        // 查询是否已绑定
+        const existing = await ctx.database.get('duolingo', { user_qid: userId })
+        if (existing.length > 0) {
+            return `你已经绑定过Duolingo账号啦！（绑定ID：${existing[0].user_did}）`
+        }
+
+        // 获取Duolingo用户ID
+        const duolingoId = await getUserId(username)
+        if (!duolingoId) {
+            return "找不到该Duolingo用户，请检查用户名是否正确。"
+        }
+
+        // 写入数据库
+        await ctx.database.create('duolingo', {
+            user_qid: userId,
+            user_did: duolingoId,
+            yesterday_exp: 0,  // 初始化昨日经验
+            lastweek_exp: 0    // 初始化上周经验
+        })
+        
+        return `绑定成功！🎉
+QQ号：${userId}
+Duolingo用户名：${username}
+对应ID：${duolingoId}`
+    })
 }

@@ -254,8 +254,8 @@ export function apply(ctx: Context) {
                 xpA = a.lastweek_exp;
                 xpB = b.lastweek_exp;
             } else {
-                xpA = await getUserInfoById(a.user_did);
-                xpB = await getUserInfoById(b.user_did);
+                xpA = await getUserInfoById(a.user_did).totalXp;
+                xpB = await getUserInfoById(b.user_did).totalXp;
             }
             return xpB - xpA;
         });

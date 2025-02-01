@@ -399,7 +399,7 @@ Duolingo 用户名：${username}
 
     ctx.command('duolingo/update')
       .action(async ({ session }) => {
-            updateUserExperience();
+            updateUserExperience(ctx);
             return "更新操作成功";
         });
 }

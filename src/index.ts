@@ -31,7 +31,7 @@ function isTimestampToday(timestamp: number): boolean {
 
 async function getXpSummariesByUserId(userId: number): Promise<XpSummariesResponse | null> {
     try {
-        const response = await fetch(`https://www.duolingo.com/2017 - 06 - 30/users/${userId}/xp_summaries`);
+        const response = await fetch(`https://www.duolingo.com/2017-06-30/users/${userId}/xp_summaries`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }

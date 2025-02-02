@@ -114,14 +114,18 @@ async function updateUserExperience(ctx: Context) {
     }
 }
 
-function getYesterdayData(response: XpSummariesResponse): XpSummary {
+// 通用函数，用于获取指定天数前的数据
+function getDaysAgoData(response: XpSummariesResponse, daysAgo: number): XpSummary {
     const now = new Date();
-    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    const startOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).getTime();
-    const endOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate() + 1).getTime() - 1;
+    const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
+    const startOfTargetDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
+    const endOfTargetDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1).getTime() - 1;
+
+    console.log(startOfTargetDate, endOfTargetDate);
 
     const res = response.summaries.filter(summary => {
-        return summary.date! >= startOfYesterday && summary.date! <= endOfYesterday;
+        // 处理 summary.date 可能为 null 或 undefined 的情况
+        return summary.date !== null && summary.date !== undefined && summary.date >= startOfTargetDate / 1000 && summary.date <= endOfTargetDate / 1000;
     });
 
     if (res.length > 0) return res[0];
@@ -138,28 +142,31 @@ function getYesterdayData(response: XpSummariesResponse): XpSummary {
     };
 }
 
+function getSevenDaysXpSum(response: XpSummariesResponse): number {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    const startOfSevenDaysAgo = new Date(sevenDaysAgo.getFullYear(), sevenDaysAgo.getMonth(), sevenDaysAgo.getDate()).getTime();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - 1;
+
+    let totalXp = 0;
+    for (const summary of response.summaries) {
+        if (summary.date !== null && summary.date !== undefined &&
+            summary.date >= startOfSevenDaysAgo / 1000 && summary.date <= endOfToday / 1000) {
+            totalXp += summary.gainedXp;
+        }
+    }
+
+    return totalXp;
+}
+
+// 获取昨天的数据
+function getYesterdayData(response: XpSummariesResponse): XpSummary {
+    return getDaysAgoData(response, 1);
+}
+
 // 获取七天前的数据
 function getSevenDaysAgoData(response: XpSummariesResponse): XpSummary {
-    const now = new Date();
-    const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-    const startOfSevenDaysAgo = new Date(sevenDaysAgo.getFullYear(), sevenDaysAgo.getMonth(), sevenDaysAgo.getDate()).getTime();
-    const endOfSevenDaysAgo = new Date(sevenDaysAgo.getFullYear(), sevenDaysAgo.getMonth(), sevenDaysAgo.getDate() + 1).getTime() - 1;
-
-    const res = response.summaries.filter(summary => {
-        return summary.date! >= startOfSevenDaysAgo && summary.date! <= endOfSevenDaysAgo;
-    })
-    if (res.length > 0) return res[0];
-    else return {
-        gainedXp: 0,
-        frozen: false,
-        streakExtended: false,
-        date: 0,
-        userId: 0,
-        repaired: false,
-        dailyGoalXp: 0,
-        numSessions: 0,
-        totalSessionTime: 0
-    };
+    return getDaysAgoData(response, 7);
 }
 
 export function apply(ctx: Context) {
@@ -196,12 +203,15 @@ export function apply(ctx: Context) {
             extras.set(users[i].user_did, await getUserInfoById(users[i].user_did));
             xpData.set(users[i].user_did, await getXpSummariesByUserId(users[i].user_did));
         }
+        
+          
         // 过滤掉数据为0的用户
-        const validUsers = users.filter(user => {
+          const validUsers = users.filter(user => {
+              console.log(getYesterdayData(xpData.get(user.user_did)))
             if (type === 'daily') {
                 return getYesterdayData(xpData.get(user.user_did)).gainedXp > 0;
             } else if (type === 'weekly') {
-                return getSevenDaysAgoData(xpData.get(user.user_did)).gainedXp > 0;
+                return getSevenDaysXpSum(xpData.get(user.user_did)) > 0;
             }
             return true;
         });
@@ -210,11 +220,11 @@ export function apply(ctx: Context) {
         const sortedUsers = await validUsers.sort((a, b) => {
             let xpA: number, xpB: number;
             if (type === 'daily') {
-                xpA = extras.get(a.user_did).totalXp - getYesterdayData(xpData.get(a.user_did)).gainedXp;
-                xpB = extras.get(b.user_did).totalXp - getYesterdayData(xpData.get(b.user_did)).gainedXp;
+                xpA = getYesterdayData(xpData.get(a.user_did)).gainedXp;
+                xpB = getYesterdayData(xpData.get(b.user_did)).gainedXp;
             } else if (type === 'weekly') {
-                xpA = extras.get(a.user_did).totalXp - getSevenDaysAgoData(xpData.get(a.user_did)).gainedXp;
-                xpB = extras.get(b.user_did).totalXp - getSevenDaysAgoData(xpData.get(b.user_did)).gainedXp;
+                xpA = getSevenDaysXpSum(xpData.get(a.user_did));
+                xpB = getSevenDaysXpSum(xpData.get(b.user_did));
             } else {
                 xpA = extras.get(a.user_did).totalXp;
                 xpB = extras.get(b.user_did).totalXp;
@@ -227,7 +237,7 @@ export function apply(ctx: Context) {
         for (let i = 0; i < sortedUsers.length; i++) {
             const user = sortedUsers[i];
             const userId = user.user_did;
-            const xp = extras.get(userId).totalXp - (type === 'daily' ? getYesterdayData(xpData.get(userId)).gainedXp : (type === 'weekly' ? getSevenDaysAgoData(xpData.get(userId)).gainedXp : 0));
+            const xp = type === 'daily' ? getYesterdayData(xpData.get(userId)).gainedXp : (type === 'weekly' ? getSevenDaysXpSum(xpData.get(userId)) : extras.get(userId).totalXp);
             rankInfo += `#${i + 1}. ${extras.get(userId).username}: ${xp}\n`;
         }
 

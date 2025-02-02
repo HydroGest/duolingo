@@ -159,11 +159,6 @@ function getSevenDaysXpSum(response: XpSummariesResponse): number {
     return totalXp;
 }
 
-// 获取昨天的数据
-function getYesterdayData(response: XpSummariesResponse): XpSummary {
-    return getDaysAgoData(response, 1);
-}
-
 // 获取七天前的数据
 function getSevenDaysAgoData(response: XpSummariesResponse): XpSummary {
     return getDaysAgoData(response, 7);
@@ -203,13 +198,11 @@ export function apply(ctx: Context) {
             extras.set(users[i].user_did, await getUserInfoById(users[i].user_did));
             xpData.set(users[i].user_did, await getXpSummariesByUserId(users[i].user_did));
         }
-        
           
         // 过滤掉数据为0的用户
           const validUsers = users.filter(user => {
-              console.log(getYesterdayData(xpData.get(user.user_did)))
             if (type === 'daily') {
-                return getYesterdayData(xpData.get(user.user_did)).gainedXp > 0;
+                return getDaysAgoData(xpData.get(user.user_did), 0).gainedXp > 0;
             } else if (type === 'weekly') {
                 return getSevenDaysXpSum(xpData.get(user.user_did)) > 0;
             }
@@ -220,8 +213,8 @@ export function apply(ctx: Context) {
         const sortedUsers = await validUsers.sort((a, b) => {
             let xpA: number, xpB: number;
             if (type === 'daily') {
-                xpA = getYesterdayData(xpData.get(a.user_did)).gainedXp;
-                xpB = getYesterdayData(xpData.get(b.user_did)).gainedXp;
+                xpA = getDaysAgoData(xpData.get(a.user_did), 0).gainedXp;
+                xpB = getDaysAgoData(xpData.get(b.user_did), 0).gainedXp;
             } else if (type === 'weekly') {
                 xpA = getSevenDaysXpSum(xpData.get(a.user_did));
                 xpB = getSevenDaysXpSum(xpData.get(b.user_did));
@@ -237,7 +230,7 @@ export function apply(ctx: Context) {
         for (let i = 0; i < sortedUsers.length; i++) {
             const user = sortedUsers[i];
             const userId = user.user_did;
-            const xp = type === 'daily' ? getYesterdayData(xpData.get(userId)).gainedXp : (type === 'weekly' ? getSevenDaysXpSum(xpData.get(userId)) : extras.get(userId).totalXp);
+            const xp = type === 'daily' ? getDaysAgoData(xpData.get(userId), 0).gainedXp : (type === 'weekly' ? getSevenDaysXpSum(xpData.get(userId)) : extras.get(userId).totalXp);
             rankInfo += `#${i + 1}. ${extras.get(userId).username}: ${xp}\n`;
         }
 

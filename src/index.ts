@@ -312,6 +312,9 @@ Duolingo 用户名：${username}
     ctx.command('duolingo/calendar [username:string]')
         .alias('cal', 'cld', 'exp')
         .action(async ({ session }, username) => {
+
+            session?.send("少女祈祷中...")
+
             let userId: number;
             if (!username) {
                 const userQid = Number(session.event.user.id);

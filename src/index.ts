@@ -326,13 +326,17 @@ Duolingo 用户名：${username}
                 userId = await getUserId(username);
             }
 
+            let name: string;
+            if (username) name = username;
+            else name = (await getUserInfoById(userId)).username;
+
             const XpSummaries = await getXpSummariesByUserId(userId);
             if (!XpSummaries) {
                 return "获取数据失败";
             }
             XpSummaries.summaries.sort((a, b) => a.date - b.date);
 
-            let template: string = "";
+            let template: string = `<message>${name} 的经验值日历：</message>`;
             XpSummaries.summaries.forEach(summary => {
                 const date = convertTimestampToChineseDate(summary.date);
                 template += `<message>日期: ${date} (${getWeekday(summary.date)})\n`;

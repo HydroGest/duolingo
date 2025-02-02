@@ -332,19 +332,16 @@ Duolingo 用户名：${username}
             }
             XpSummaries.summaries.sort((a, b) => a.date - b.date);
 
-            let template: string = "多邻国日历数据:\n";
+            let template: string = "";
             XpSummaries.summaries.forEach(summary => {
                 const date = convertTimestampToChineseDate(summary.date);
-                template += `日期: ${date} (${getWeekday(summary.date)})\n`;
-                template += `获得经验值: ${summary.gainedXp ? summary.gainedXp : '无'}\n`;
-                template += `连胜是否延长: ${summary.streakExtended ? '是' : '否'}\n`;
-                template += `内卷次数: ${summary.numSessions ? summary.numSessions : '无'}\n`;
-                template += `总内卷时间: ${summary.totalSessionTime ? summary.totalSessionTime : '无'}\n`;
-                template += `---`
+                template += `<message>日期: ${date} (${getWeekday(summary.date)})\n`;
+                template += `  - 获得经验值: ${summary.gainedXp ? summary.gainedXp : '无'}\n`;
+                template += `  - 内卷次数: ${summary.numSessions ? summary.numSessions : '无'}\n`;
+                template += `  - 总内卷时间: ${summary.totalSessionTime ? summary.totalSessionTime : '无'}</message>`;
             });
-
-            template += `今天也不要忘记内卷哦 ～(ง・̀_・́)ง`;
-            return template;
+            template += `<message>今天也不要忘记内卷哦 ～(ง・̀_・́)ง</message>`
+            return `<message forward>${template}</message>`;
 
         });
 }

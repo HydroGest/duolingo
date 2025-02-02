@@ -187,59 +187,78 @@ export function apply(ctx: Context) {
     });
 
     ctx.command('duolingo/ranking [type:string]', '获取EXP排行榜')
-      .alias('rk')
-      .usage("type 可选: daily, weekly, total")
-      .action(async ({ session }, type = 'daily') => {
-        const users = await ctx.database.get('duolingo', {});
-        let extras = new Map<number, UserResponse>();
-        let xpData = new Map<number, XpSummariesResponse>();
-        session?.send("少女祈祷中...");
-        for (let i = 0; i < users.length; i++) {
-            extras.set(users[i].user_did, await getUserInfoById(users[i].user_did));
-            xpData.set(users[i].user_did, await getXpSummariesByUserId(users[i].user_did));
-        }
-          
-        // 过滤掉数据为0的用户
-          const validUsers = users.filter(user => {
-            if (type === 'daily') {
-                return getDaysAgoData(xpData.get(user.user_did), 0).gainedXp > 0;
-            } else if (type === 'weekly') {
-                return getSevenDaysXpSum(xpData.get(user.user_did)) > 0;
-            }
-            return true;
-        });
+  .alias('rk')
+  .usage("type 可选: daily, weekly, total")
+  .action(async ({ session }, type = 'daily') => {
+    const users = await ctx.database.get('duolingo', {});
+    session?.send("少女祈祷中...");
 
-        // 根据不同类型计算XP值并排序
-        const sortedUsers = await validUsers.sort((a, b) => {
-            let xpA: number, xpB: number;
-            if (type === 'daily') {
-                xpA = getDaysAgoData(xpData.get(a.user_did), 0).gainedXp;
-                xpB = getDaysAgoData(xpData.get(b.user_did), 0).gainedXp;
-            } else if (type === 'weekly') {
-                xpA = getSevenDaysXpSum(xpData.get(a.user_did));
-                xpB = getSevenDaysXpSum(xpData.get(b.user_did));
-            } else {
-                xpA = extras.get(a.user_did).totalXp;
-                xpB = extras.get(b.user_did).totalXp;
-            }
-            return xpB - xpA;
-        });
-
-        // 生成排行榜信息
-        let rankInfo = '';
-        for (let i = 0; i < sortedUsers.length; i++) {
-            const user = sortedUsers[i];
-            const userId = user.user_did;
-            const xp = type === 'daily' ? getDaysAgoData(xpData.get(userId), 0).gainedXp : (type === 'weekly' ? getSevenDaysXpSum(xpData.get(userId)) : extras.get(userId).totalXp);
-            rankInfo += `#${i + 1}. ${extras.get(userId).username}: ${xp}\n`;
-        }
-
-        if (rankInfo === '') {
-            return '没有符合条件的用户数据';
-        }
-
-        return `EXP 排行榜（${type === 'daily' ? '今日' : (type === 'weekly' ? "本周" : "总榜")}）：\n${rankInfo}`;
+    // 并行获取所有用户的数据
+    const userPromises = users.map(async (user) => {
+      try {
+        const [userInfo, xpInfo] = await Promise.all([
+          getUserInfoById(user.user_did),
+          getXpSummariesByUserId(user.user_did)
+        ]);
+        return { user, userInfo, xpInfo };
+      } catch (error) {
+        console.error(`用户 ${user.user_did} 数据获取失败:`, error);
+        return null;
+      }
     });
+
+    // 等待所有请求完成并过滤无效结果
+    const userResults = await Promise.all(userPromises);
+    const validUserResults = userResults.filter(
+      (result): result is NonNullable<typeof result> => 
+        result !== null && 
+        result.userInfo !== null && 
+        result.xpInfo !== null
+    );
+
+    // 二次过滤（根据XP数值）
+    const filteredResults = validUserResults.filter(({ xpInfo }) => {
+      if (type === 'daily') {
+        return getDaysAgoData(xpInfo, 0).gainedXp > 0;
+      } else if (type === 'weekly') {
+        return getSevenDaysXpSum(xpInfo) > 0;
+      }
+      return true; // total 类型不需要过滤
+    });
+
+    // 排序处理
+    const sortedResults = filteredResults.sort((a, b) => {
+      let xpA: number, xpB: number;
+      if (type === 'daily') {
+        xpA = getDaysAgoData(a.xpInfo, 0).gainedXp;
+        xpB = getDaysAgoData(b.xpInfo, 0).gainedXp;
+      } else if (type === 'weekly') {
+        xpA = getSevenDaysXpSum(a.xpInfo);
+        xpB = getSevenDaysXpSum(b.xpInfo);
+      } else {
+        xpA = a.userInfo.totalXp;
+        xpB = b.userInfo.totalXp;
+      }
+      return xpB - xpA;
+    });
+
+    // 生成排行榜信息
+    if (sortedResults.length === 0) {
+      return '没有符合条件的用户数据';
+    }
+
+    const rankInfo = sortedResults.map((result, index) => {
+      const xp = type === 'daily'
+        ? getDaysAgoData(result.xpInfo, 0).gainedXp
+        : type === 'weekly'
+        ? getSevenDaysXpSum(result.xpInfo)
+        : result.userInfo.totalXp;
+      
+      return `#${index + 1}. ${result.userInfo.username}: ${xp}`;
+    }).join('\n');
+
+    return `EXP 排行榜（${type === 'daily' ? '今日' : type === 'weekly' ? '本周' : '总榜'}）：\n${rankInfo}`;
+  });
 
     // 定义 duolingo/info 命令
     ctx.command('duolingo/info <username:string>')

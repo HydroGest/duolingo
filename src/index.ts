@@ -1,5 +1,5 @@
 import { Context , Schema } from 'koishi';
-import { Duolingo, XpSummariesResponse, UserResponse } from './interfaces';
+import { Duolingo, XpSummariesResponse, UserResponse, XpSummary } from './interfaces';
 import { convertTimestampToChineseDate, getDelayToNext, getWeekday } from './utils'
 
 export const name = 'duolingo';
@@ -114,6 +114,54 @@ async function updateUserExperience(ctx: Context) {
     }
 }
 
+function getYesterdayData(response: XpSummariesResponse): XpSummary {
+    const now = new Date();
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const startOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).getTime();
+    const endOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate() + 1).getTime() - 1;
+
+    const res = response.summaries.filter(summary => {
+        return summary.date! >= startOfYesterday && summary.date! <= endOfYesterday;
+    });
+
+    if (res.length > 0) return res[0];
+    else return {
+        gainedXp: 0,
+        frozen: false,
+        streakExtended: false,
+        date: 0,
+        userId: 0,
+        repaired: false,
+        dailyGoalXp: 0,
+        numSessions: 0,
+        totalSessionTime: 0
+    };
+}
+
+// 获取七天前的数据
+function getSevenDaysAgoData(response: XpSummariesResponse): XpSummary {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+    const startOfSevenDaysAgo = new Date(sevenDaysAgo.getFullYear(), sevenDaysAgo.getMonth(), sevenDaysAgo.getDate()).getTime();
+    const endOfSevenDaysAgo = new Date(sevenDaysAgo.getFullYear(), sevenDaysAgo.getMonth(), sevenDaysAgo.getDate() + 1).getTime() - 1;
+
+    const res = response.summaries.filter(summary => {
+        return summary.date! >= startOfSevenDaysAgo && summary.date! <= endOfSevenDaysAgo;
+    })
+    if (res.length > 0) return res[0];
+    else return {
+        gainedXp: 0,
+        frozen: false,
+        streakExtended: false,
+        date: 0,
+        userId: 0,
+        repaired: false,
+        dailyGoalXp: 0,
+        numSessions: 0,
+        totalSessionTime: 0
+    };
+}
+
 export function apply(ctx: Context) {
     // 首次延迟执行
     ctx.setTimeout(() => {
@@ -142,16 +190,18 @@ export function apply(ctx: Context) {
       .action(async ({ session }, type = 'daily') => {
         const users = await ctx.database.get('duolingo', {});
         let extras = new Map<number, UserResponse>();
+        let xpData = new Map<number, XpSummariesResponse>();
         session?.send("少女祈祷中...");
         for (let i = 0; i < users.length; i++) {
-                extras.set(users[i].user_did, await getUserInfoById(users[i].user_did));
+            extras.set(users[i].user_did, await getUserInfoById(users[i].user_did));
+            xpData.set(users[i].user_did, await getXpSummariesByUserId(users[i].user_did));
         }
         // 过滤掉数据为0的用户
         const validUsers = users.filter(user => {
             if (type === 'daily') {
-                return user.yesterday_exp > 0;
+                return getYesterdayData(xpData.get(user.user_did)).gainedXp > 0;
             } else if (type === 'weekly') {
-                return user.lastweek_exp > 0;
+                return getSevenDaysAgoData(xpData.get(user.user_did)).gainedXp > 0;
             }
             return true;
         });
@@ -160,11 +210,11 @@ export function apply(ctx: Context) {
         const sortedUsers = await validUsers.sort((a, b) => {
             let xpA: number, xpB: number;
             if (type === 'daily') {
-                xpA = extras.get(a.user_did).totalXp - a.yesterday_exp;
-                xpB = extras.get(b.user_did).totalXp - b.yesterday_exp;
+                xpA = extras.get(a.user_did).totalXp - getYesterdayData(xpData.get(a.user_did)).gainedXp;
+                xpB = extras.get(b.user_did).totalXp - getYesterdayData(xpData.get(b.user_did)).gainedXp;
             } else if (type === 'weekly') {
-                xpA = extras.get(a.user_did).totalXp - a.lastweek_exp;
-                xpB = extras.get(b.user_did).totalXp - b.lastweek_exp;
+                xpA = extras.get(a.user_did).totalXp - getSevenDaysAgoData(xpData.get(a.user_did)).gainedXp;
+                xpB = extras.get(b.user_did).totalXp - getSevenDaysAgoData(xpData.get(b.user_did)).gainedXp;
             } else {
                 xpA = extras.get(a.user_did).totalXp;
                 xpB = extras.get(b.user_did).totalXp;
@@ -177,7 +227,7 @@ export function apply(ctx: Context) {
         for (let i = 0; i < sortedUsers.length; i++) {
             const user = sortedUsers[i];
             const userId = user.user_did;
-            const xp = extras.get(userId).totalXp - (type === 'daily' ? user.yesterday_exp :  (type === 'weekly' ? user.lastweek_exp : 0));
+            const xp = extras.get(userId).totalXp - (type === 'daily' ? getYesterdayData(xpData.get(userId)).gainedXp : (type === 'weekly' ? getSevenDaysAgoData(xpData.get(userId)).gainedXp : 0));
             rankInfo += `#${i + 1}. ${extras.get(userId).username}: ${xp}\n`;
         }
 

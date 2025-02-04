@@ -270,7 +270,7 @@ function broadcastStat(ctx: Content) {
     message += `🌟 后起之秀：${titles.newcomer.map(u => u.user_did).join(', ')}\n`;
     message += `🐶 稳如老狗：${titles.steadyPlayer.map(u => u.user_did).join(', ')}`;
     
-    ctx.broadcast('123456789', message);
+    ctx.broadcast('1002578367', message);
 }
 
 export function apply(ctx: Context) {

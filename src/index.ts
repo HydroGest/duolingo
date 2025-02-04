@@ -1,5 +1,5 @@
 import { Context , Schema } from 'koishi';
-import { Duolingo, XpSummariesResponse, UserResponse, XpSummary } from './interfaces';
+import { Duolingo, Duolingo_daily, XpSummariesResponse, UserResponse, XpSummary } from './interfaces';
 import { convertTimestampToChineseDate, getDelayToNext, getWeekday } from './utils'
 
 export const name = 'duolingo';
@@ -10,6 +10,7 @@ export const inject = ['database'];
 declare module 'koishi' {
     interface Tables {
         duolingo: Duolingo;
+        duolingo_daily: Duolingo_daily;
     }
 }
 
@@ -164,16 +165,137 @@ function getSevenDaysAgoData(response: XpSummariesResponse): XpSummary {
     return getDaysAgoData(response, 7);
 }
 
+async function generateDailyStats(ctx: Context) {
+    const users = await ctx.database.get('duolingo', {});
+    const today = new Date().toISOString().split('T')[0];
+    
+    // 获取所有用户当日经验
+    const stats = await Promise.all(users.map(async (user) => {
+        const xpData = await getXpSummariesByUserId(user.user_did);
+        return {
+            did: user.user_did,
+            xp: getDaysAgoData(xpData, 0).gainedXp
+        };
+    }));
+
+    // 按经验排序生成排名
+    const sorted = stats.sort((a, b) => b.xp - a.xp)
+                       .map((item, index) => ({
+                           ...item,
+                           rank: index + 1
+                       }));
+
+    // 写入数据库
+    await ctx.database.upsert('duolingo_daily', sorted.map(item => ({
+        user_did: item.did,
+        date: today,
+        rank: item.rank,
+        xp: item.xp
+    })));
+}
+
+async function getDailyTitles(ctx: Context, date: string) {
+    const titles = {
+        hardWorker: [],     // 内卷达人 (xp ≥ 1000)
+        risingStar: [],     // 进步之星 (排名上升 ≥2)
+        newcomer: [],       // 后起之秀 (首次进入前50%)
+        steadyPlayer: []    // 稳如老狗 (连续3天波动 ≤1)
+    };
+
+    // 获取当日数据
+    const dailyData = await ctx.database.get('duolingo_daily', { date });
+    
+    // 内卷达人
+    titles.hardWorker = dailyData.filter(d => d.xp >= 1000);
+
+    // 进步之星（需要前一天数据）
+    const prevDate = new Date(date);
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDayData = await ctx.database.get('duolingo_daily', 
+        { date: prevDate.toISOString().split('T')[0] });
+
+    for (const today of dailyData) {
+        const yesterday = prevDayData.find(d => d.user_did === today.user_did);
+        if (yesterday && today.rank <= yesterday.rank - 2) {
+            titles.risingStar.push(today);
+        }
+    }
+
+    // 后起之秀（检查历史记录）
+    const totalUsers = dailyData.length;
+    const threshold = Math.ceil(totalUsers * 0.5);
+    
+    for (const today of dailyData.filter(d => d.rank <= threshold)) {
+        const history = await ctx.database.get('duolingo_daily', 
+            { user_did: today.user_did });
+        if (history.every(d => d.rank > threshold)) {
+            titles.newcomer.push(today);
+        }
+    }
+
+    // 稳如老狗（检查最近3天）
+    const threeDaysAgo = new Date(date);
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 2);
+    
+    for (const today of dailyData) {
+        const history = await ctx.database.get('duolingo_daily', {
+            user_did: today.user_did,
+            date: { $gte: threeDaysAgo.toISOString().split('T')[0] }
+        }).execute();
+        
+        if (history.length >= 3) {
+            const ranks = history.sort((a, b) => a.date.localeCompare(b.date))
+                                .map(d => d.rank);
+            const isSteady = ranks.every((r, i) => 
+                i === 0 || Math.abs(r - ranks[i-1]) <= 1);
+            if (isSteady) titles.steadyPlayer.push(today);
+        }
+    }
+
+    return titles;
+}
+
+function broadcastStat(ctx: Content) {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // 生成当日数据
+    await generateDailyStats(ctx);
+    
+    // 获取称号结果
+    const titles = await getDailyTitles(ctx, today);
+    
+    let message = `【${today} 每日统计】\n`;
+    message += `🏅 内卷达人：${titles.hardWorker.map(u => u.user_did).join(', ')}\n`;
+    message += `🚀 进步之星：${titles.risingStar.map(u => u.user_did).join(', ')}\n`;
+    message += `🌟 后起之秀：${titles.newcomer.map(u => u.user_did).join(', ')}\n`;
+    message += `🐶 稳如老狗：${titles.steadyPlayer.map(u => u.user_did).join(', ')}`;
+    
+    ctx.broadcast('123456789', message);
+}
+
 export function apply(ctx: Context) {
     // 首次延迟执行
     ctx.setTimeout(() => {
         updateUserExperience(ctx);
+        broadcastStat(ctx);
         ctx.setInterval(() => {
             updateUserExperience(ctx);
+            broadcastStat(ctx);
         }, 24 * 60 * 60 * 1000); // 24 小时间隔
     }, getDelayToNext(0)); // 凌晨 0 点执行
 
     // 扩展数据库模型
+    ctx.model.extend('duolingo_daily', {
+        id: 'unsigned',
+        user_did: 'integer',
+        date: 'string',
+        rank: 'unsigned',
+        xp: 'unsigned'
+    }, {
+        primary: 'id',
+        autoInc: true,
+        unique: [['user_did', 'date']]
+    });
     ctx.model.extend('duolingo', {
         // 各字段的类型声明
         id: 'unsigned',
@@ -185,6 +307,19 @@ export function apply(ctx: Context) {
         primary: "id", // 主键名 
         autoInc: true // 使用自增主键 
     });
+  
+ctx.command('duolingo/daily [date:string]')
+  .action(async ({ session }, date) => {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const data = await ctx.database.get('duolingo_daily', { date: targetDate });
+    
+    if (!data.length) return '暂无当日数据';
+    
+    return `当日统计 (${targetDate})：\n` +
+        data.sort((a, b) => a.rank - b.rank)
+            .map(d => `#${d.rank} ${d.user_did} XP:${d.xp}`)
+            .join('\n');
+  });
 
     ctx.command('duolingo/ranking [type:string]', '获取EXP排行榜')
   .alias('rk')

@@ -241,7 +241,7 @@ async function getDailyTitles(ctx: Context, date: string) {
         const history = await ctx.database.get('duolingo_daily', {
             user_did: today.user_did,
             date: { $gte: threeDaysAgo.toISOString().split('T')[0] }
-        }).execute();
+        });
         
         if (history.length >= 3) {
             const ranks = history.sort((a, b) => a.date.localeCompare(b.date))
@@ -255,7 +255,7 @@ async function getDailyTitles(ctx: Context, date: string) {
     return titles;
 }
 
-function broadcastStat(ctx: Content) {
+async function broadcastStat(ctx: Context) {
     const today = new Date().toISOString().split('T')[0];
     
     // 生成当日数据
@@ -276,10 +276,10 @@ function broadcastStat(ctx: Content) {
 export function apply(ctx: Context) {
     // 首次延迟执行
     ctx.setTimeout(() => {
-        updateUserExperience(ctx);
-        broadcastStat(ctx);
+        //updateUserExperience(ctx);
+        await broadcastStat(ctx);
         ctx.setInterval(() => {
-            updateUserExperience(ctx);
+            //updateUserExperience(ctx);
             broadcastStat(ctx);
         }, 24 * 60 * 60 * 1000); // 24 小时间隔
     }, getDelayToNext(0)); // 凌晨 0 点执行

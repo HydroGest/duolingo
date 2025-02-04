@@ -277,7 +277,7 @@ export function apply(ctx: Context) {
     // 首次延迟执行
     ctx.setTimeout(() => {
         //updateUserExperience(ctx);
-        await broadcastStat(ctx);
+        broadcastStat(ctx);
         ctx.setInterval(() => {
             //updateUserExperience(ctx);
             broadcastStat(ctx);

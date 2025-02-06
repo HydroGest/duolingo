@@ -174,7 +174,7 @@ async function generateDailyStats(ctx: Context) {
         const xpData = await getXpSummariesByUserId(user.user_did);
         return {
             did: user.user_did,
-            xp: getDaysAgoData(xpData, 0).gainedXp
+            xp: getDaysAgoData(xpData, 1).gainedXp
         };
     }));
 

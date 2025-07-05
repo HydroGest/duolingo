@@ -198,8 +198,8 @@ async function remindUnlearnedUsers(ctx: Context, config: Config) {
     }
 
     // 构造提醒消息
-    let message = `【多邻国每日提醒】\n以下同学今天还没有学习，小心断连哦！\n`;
-    message += toRemind.map(u => `<at id="${u.user_qid}" />`).join(' ') + '\n';
+    let message = `【多邻国每日提醒】\n以下同学今天还没有学习，小心断连哦！<br />`;
+    message += toRemind.map(u => `<at id="${u.user_qid}" />`).join('<br />') + '<br />';
     message += '赶紧去学习吧～(ง •_•)ง';
 
     // 发送到配置的群组
@@ -427,7 +427,13 @@ Duolingo 用户名：${username}
             updateUserExperience(ctx);
             return "更新操作成功";
         });
-    
+        
+    ctx.command('duolingo/remind', { authority: 1 })
+        .action(async ({ session }) => {
+            await remindUnlearnedUsers(ctx, config);
+            return "手动提醒成功";
+        });
+        
     ctx.command('duolingo/calendar [username:string]')
         .alias('cal', 'cld', 'exp')
         .action(async ({ session }, username) => {

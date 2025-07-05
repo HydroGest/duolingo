@@ -549,7 +549,7 @@ Duolingo 用户名：${username}
             let template: string = `<message>${name} 的经验值日历：</message>`;
             XpSummaries.summaries.forEach(summary => {
                 const date = convertTimestampToChineseDate(summary.date);
-                template += `<message>日期: ${date} (${getWeekday(summary.date)})\n`;
+                template += `<message>{summary.numSessions ? '✅' :' ❌'} 日期: ${date} (${getWeekday(summary.date)})\n`;
                 template += `  - 获得经验值: ${summary.gainedXp ? summary.gainedXp : '无'}\n`;
                 template += `  - 内卷次数: ${summary.numSessions ? summary.numSessions : '无'}\n`;
                 template += `  - 总内卷时间: ${summary.totalSessionTime ? summary.totalSessionTime : '无'}</message>`;

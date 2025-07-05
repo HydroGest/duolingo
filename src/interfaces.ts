@@ -97,11 +97,3 @@ export interface Duolingo {
     yesterday_exp: number;
     lastweek_exp: number;
 }
-
-export interface Duolingo_daily {
-            id: number
-            user_did: number
-            date: string // YYYY-MM-DD
-            rank: number
-            xp: number
-}

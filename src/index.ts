@@ -1,19 +1,21 @@
 import { Context , Schema } from 'koishi';
-import { Duolingo, Duolingo_daily, XpSummariesResponse, UserResponse, XpSummary } from './interfaces';
+import { Duolingo, XpSummariesResponse, UserResponse, XpSummary } from './interfaces';
 import { convertTimestampToChineseDate, getDelayToNext, getWeekday } from './utils'
 
 export const name = 'duolingo';
-export interface Config {}
-export const Config: Schema<Config> = Schema.object({});
+export interface Config {
+  remindGroups?: string[];
+}
+export const Config: Schema<Config> = Schema.object({
+  remindGroups: Schema.array(Schema.string()).default([]).description('需要发送提醒的群号列表'),
+});
 export const inject = ['database'];
 
 declare module 'koishi' {
     interface Tables {
         duolingo: Duolingo;
-        duolingo_daily: Duolingo_daily;
     }
 }
-
 
 // 判断时间戳是否为今天
 function isTimestampToday(timestamp: number): boolean {
@@ -122,10 +124,7 @@ function getDaysAgoData(response: XpSummariesResponse, daysAgo: number): XpSumma
     const startOfTargetDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
     const endOfTargetDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1).getTime() - 1;
 
-    console.log(startOfTargetDate, endOfTargetDate);
-
     const res = response.summaries.filter(summary => {
-        // 处理 summary.date 可能为 null 或 undefined 的情况
         return summary.date !== null && summary.date !== undefined && summary.date >= startOfTargetDate / 1000 && summary.date <= endOfTargetDate / 1000;
     });
 
@@ -165,137 +164,63 @@ function getSevenDaysAgoData(response: XpSummariesResponse): XpSummary {
     return getDaysAgoData(response, 7);
 }
 
-async function generateDailyStats(ctx: Context) {
+// 检查并提醒未学习用户
+async function remindUnlearnedUsers(ctx: Context, config: Config) {
+    if (!config.remindGroups || config.remindGroups.length === 0) return;
+
+    // 获取所有绑定用户
     const users = await ctx.database.get('duolingo', {});
-    const today = new Date().toISOString().split('T')[0];
     
-    // 获取所有用户当日经验
-    const stats = await Promise.all(users.map(async (user) => {
-        const xpData = await getXpSummariesByUserId(user.user_did);
-        return {
-            did: user.user_did,
-            xp: getDaysAgoData(xpData, 1).gainedXp
-        };
+    // 用于收集需要提醒的用户
+    const toRemind: { user_qid: number, username: string }[] = [];
+
+    // 并行处理每个用户
+    await Promise.all(users.map(async (user) => {
+        try {
+            const userInfo = await getUserInfoById(user.user_did);
+            if (!userInfo) return;
+
+            // 检查最后学习时间是否为今天
+            if (!isTimestampToday(userInfo.streakData.updatedTimestamp)) {
+                toRemind.push({
+                    user_qid: user.user_qid,
+                    username: userInfo.username
+                });
+            }
+        } catch (error) {
+            ctx.logger.warn(`用户 ${user.user_qid} 检查失败: ${error.message}`);
+        }
     }));
 
-    // 按经验排序生成排名
-    const sorted = stats.sort((a, b) => b.xp - a.xp)
-                       .map((item, index) => ({
-                           ...item,
-                           rank: index + 1
-                       }));
-
-    // 写入数据库
-    await ctx.database.upsert('duolingo_daily', sorted.map(item => ({
-        user_did: item.did,
-        date: today,
-        rank: item.rank,
-        xp: item.xp
-    })));
-}
-
-async function getDailyTitles(ctx: Context, date: string) {
-    const titles = {
-        hardWorker: [],     // 内卷达人 (xp ≥ 1000)
-        risingStar: [],     // 进步之星 (排名上升 ≥2)
-        newcomer: [],       // 后起之秀 (首次进入前50%)
-        steadyPlayer: []    // 稳如老狗 (连续3天波动 ≤1)
-    };
-
-    // 获取当日数据
-    const dailyData = await ctx.database.get('duolingo_daily', { date });
-    
-    // 内卷达人
-    titles.hardWorker = dailyData.filter(d => d.xp >= 1000);
-
-    // 进步之星（需要前一天数据）
-    const prevDate = new Date(date);
-    prevDate.setDate(prevDate.getDate() - 1);
-    const prevDayData = await ctx.database.get('duolingo_daily', 
-        { date: prevDate.toISOString().split('T')[0] });
-
-    for (const today of dailyData) {
-        const yesterday = prevDayData.find(d => d.user_did === today.user_did);
-        if (yesterday && today.rank <= yesterday.rank - 2) {
-            titles.risingStar.push(today);
-        }
+    if (toRemind.length === 0) {
+        ctx.logger.info('今天所有用户都学习了，不需要提醒');
+        return;
     }
 
-    // 后起之秀（检查历史记录）
-    const totalUsers = dailyData.length;
-    const threshold = Math.ceil(totalUsers * 0.5);
-    
-    for (const today of dailyData.filter(d => d.rank <= threshold)) {
-        const history = await ctx.database.get('duolingo_daily', 
-            { user_did: today.user_did });
-        if (history.every(d => d.rank > threshold)) {
-            titles.newcomer.push(today);
-        }
-    }
+    // 构造提醒消息
+    let message = `【多邻国每日提醒】\n以下同学今天还没有学习，小心断连哦！\n`;
+    message += toRemind.map(u => `<at id="${u.user_qid}" />`).join(' ') + '\n';
+    message += '赶紧去学习吧～(ง •_•)ง';
 
-    // 稳如老狗（检查最近3天）
-    const threeDaysAgo = new Date(date);
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 2);
-    
-    for (const today of dailyData) {
-        const history = await ctx.database.get('duolingo_daily', {
-            user_did: today.user_did,
-            date: { $gte: threeDaysAgo.toISOString().split('T')[0] }
-        });
-        
-        if (history.length >= 3) {
-            const ranks = history.sort((a, b) => a.date.localeCompare(b.date))
-                                .map(d => d.rank);
-            const isSteady = ranks.every((r, i) => 
-                i === 0 || Math.abs(r - ranks[i-1]) <= 1);
-            if (isSteady) titles.steadyPlayer.push(today);
-        }
-    }
-
-    return titles;
+    // 发送到配置的群组
+    ctx.broadcast(config.remindGroups, message);
 }
 
-async function broadcastStat(ctx: Context) {
-    const today = new Date().toISOString().split('T')[0];
-    
-    // 生成当日数据
-    await generateDailyStats(ctx);
-    
-    // 获取称号结果
-    const titles = await getDailyTitles(ctx, today);
-    
-    let message = `【${today} 每日统计】\n`;
-    message += `🏅 内卷达人：${titles.hardWorker.map(u => u.user_did).join(', ')}\n`;
-    message += `🚀 进步之星：${titles.risingStar.map(u => u.user_did).join(', ')}\n`;
-    message += `🌟 后起之秀：${titles.newcomer.map(u => u.user_did).join(', ')}\n`;
-    message += `🐶 稳如老狗：${titles.steadyPlayer.map(u => u.user_did).join(', ')}`;
-    
-    ctx.broadcast(['1002578367'], message);
-}
-
-export function apply(ctx: Context) {
+export function apply(ctx: Context, config: Config) {
     // 首次延迟执行
     ctx.setTimeout(() => {
-        //updateUserExperience(ctx);
-        broadcastStat(ctx);
-        ctx.setInterval(() => {
-            //updateUserExperience(ctx);
-            broadcastStat(ctx);
-        }, 24 * 60 * 60 * 1000); // 24 小时间隔
-    }, getDelayToNext(0)); // 凌晨 0 点执行
+        updateUserExperience(ctx);
+        // 设置每天0点更新
+        ctx.setInterval(() => updateUserExperience(ctx), 24 * 60 * 60 * 1000);
+    }, getDelayToNext(0));
+
+    // 设置每天11点提醒
+    ctx.setTimeout(() => {
+        remindUnlearnedUsers(ctx, config);
+        ctx.setInterval(() => remindUnlearnedUsers(ctx, config), 24 * 60 * 60 * 1000);
+    }, getDelayToNext(11));
 
     // 扩展数据库模型
-    ctx.model.extend('duolingo_daily', {
-        id: 'unsigned',
-        user_did: 'integer',
-        date: 'string',
-        rank: 'unsigned',
-        xp: 'unsigned'
-    }, {
-        primary: 'id',
-        autoInc: true,
-        unique: [['user_did', 'date']]
-    });
     ctx.model.extend('duolingo', {
         // 各字段的类型声明
         id: 'unsigned',
@@ -308,96 +233,83 @@ export function apply(ctx: Context) {
         autoInc: true // 使用自增主键 
     });
   
-ctx.command('duolingo/daily [date:string]')
-  .action(async ({ session }, date) => {
-    const targetDate = date || new Date().toISOString().split('T')[0];
-    const data = await ctx.database.get('duolingo_daily', { date: targetDate });
-    
-    if (!data.length) return '暂无当日数据';
-    
-    return `当日统计 (${targetDate})：\n` +
-        data.sort((a, b) => a.rank - b.rank)
-            .map(d => `#${d.rank} ${d.user_did} XP:${d.xp}`)
-            .join('\n');
-  });
-
     ctx.command('duolingo/ranking [type:string]', '获取EXP排行榜')
-  .alias('rk')
-  .usage("type 可选: daily, weekly, total")
-  .action(async ({ session }, type = 'daily') => {
-    const users = await ctx.database.get('duolingo', {});
-    session?.send("少女祈祷中...");
+        .alias('rk')
+        .usage("type 可选: daily, weekly, total")
+        .action(async ({ session }, type = 'daily') => {
+            const users = await ctx.database.get('duolingo', {});
+            session?.send("少女祈祷中...");
 
-    // 并行获取所有用户的数据
-    const userPromises = users.map(async (user) => {
-      try {
-        const [userInfo, xpInfo] = await Promise.all([
-          getUserInfoById(user.user_did),
-          getXpSummariesByUserId(user.user_did)
-        ]);
-        return { user, userInfo, xpInfo };
-      } catch (error) {
-        console.error(`用户 ${user.user_did} 数据获取失败:`, error);
-        return null;
-      }
-    });
+            // 并行获取所有用户的数据
+            const userPromises = users.map(async (user) => {
+                try {
+                    const [userInfo, xpInfo] = await Promise.all([
+                        getUserInfoById(user.user_did),
+                        getXpSummariesByUserId(user.user_did)
+                    ]);
+                    return { user, userInfo, xpInfo };
+                } catch (error) {
+                    console.error(`用户 ${user.user_did} 数据获取失败:`, error);
+                    return null;
+                }
+            });
 
-    // 等待所有请求完成并过滤无效结果
-    const userResults = await Promise.all(userPromises);
-    const validUserResults = userResults.filter(
-      (result): result is NonNullable<typeof result> => 
-        result !== null && 
-        result.userInfo !== null && 
-        result.xpInfo !== null
-    );
+            // 等待所有请求完成并过滤无效结果
+            const userResults = await Promise.all(userPromises);
+            const validUserResults = userResults.filter(
+                (result): result is NonNullable<typeof result> => 
+                    result !== null && 
+                    result.userInfo !== null && 
+                    result.xpInfo !== null
+            );
 
-    // 二次过滤（根据XP数值）
-    const filteredResults = validUserResults.filter(({ xpInfo }) => {
-      if (type === 'daily') {
-        return getDaysAgoData(xpInfo, 0).gainedXp > 0;
-      } else if (type === 'weekly') {
-        return getSevenDaysXpSum(xpInfo) > 0;
-      }
-      return true; // total 类型不需要过滤
-    });
+            // 二次过滤（根据XP数值）
+            const filteredResults = validUserResults.filter(({ xpInfo }) => {
+                if (type === 'daily') {
+                    return getDaysAgoData(xpInfo, 0).gainedXp > 0;
+                } else if (type === 'weekly') {
+                    return getSevenDaysXpSum(xpInfo) > 0;
+                }
+                return true; // total 类型不需要过滤
+            });
 
-    // 排序处理
-    const sortedResults = filteredResults.sort((a, b) => {
-      let xpA: number, xpB: number;
-      if (type === 'daily') {
-        xpA = getDaysAgoData(a.xpInfo, 0).gainedXp;
-        xpB = getDaysAgoData(b.xpInfo, 0).gainedXp;
-      } else if (type === 'weekly') {
-        xpA = getSevenDaysXpSum(a.xpInfo);
-        xpB = getSevenDaysXpSum(b.xpInfo);
-      } else {
-        xpA = a.userInfo.totalXp;
-        xpB = b.userInfo.totalXp;
-      }
-      return xpB - xpA;
-    });
+            // 排序处理
+            const sortedResults = filteredResults.sort((a, b) => {
+                let xpA: number, xpB: number;
+                if (type === 'daily') {
+                    xpA = getDaysAgoData(a.xpInfo, 0).gainedXp;
+                    xpB = getDaysAgoData(b.xpInfo, 0).gainedXp;
+                } else if (type === 'weekly') {
+                    xpA = getSevenDaysXpSum(a.xpInfo);
+                    xpB = getSevenDaysXpSum(b.xpInfo);
+                } else {
+                    xpA = a.userInfo.totalXp;
+                    xpB = b.userInfo.totalXp;
+                }
+                return xpB - xpA;
+            });
 
-    // 生成排行榜信息
-    if (sortedResults.length === 0) {
-      return '没有符合条件的用户数据';
-    }
+            // 生成排行榜信息
+            if (sortedResults.length === 0) {
+                return '没有符合条件的用户数据';
+            }
 
-    const rankInfo = sortedResults.map((result, index) => {
-      const xp = type === 'daily'
-        ? getDaysAgoData(result.xpInfo, 0).gainedXp
-        : type === 'weekly'
-        ? getSevenDaysXpSum(result.xpInfo)
-        : result.userInfo.totalXp;
-      
-      return `#${index + 1}. ${result.userInfo.username}: ${xp}`;
-    }).join('\n');
+            const rankInfo = sortedResults.map((result, index) => {
+                const xp = type === 'daily'
+                    ? getDaysAgoData(result.xpInfo, 0).gainedXp
+                    : type === 'weekly'
+                    ? getSevenDaysXpSum(result.xpInfo)
+                    : result.userInfo.totalXp;
+                
+                return `#${index + 1}. ${result.userInfo.username}: ${xp}`;
+            }).join('\n');
 
-    return `EXP 排行榜（${type === 'daily' ? '今日' : type === 'weekly' ? '本周' : '总榜'}）：\n${rankInfo}`;
-  });
+            return `EXP 排行榜（${type === 'daily' ? '今日' : type === 'weekly' ? '本周' : '总榜'}）：\n${rankInfo}`;
+        });
 
     // 定义 duolingo/info 命令
     ctx.command('duolingo/info <username:string>')
-      .action(async ({ session }, username) => {
+        .action(async ({ session }, username) => {
             let userId: number;
 
             if (!username) {
@@ -428,7 +340,7 @@ ID：${data.id}
 当前正在学习：${data.courses.map(course => course.title).join(', ')}
 最近刷题：${convertTimestampToChineseDate(data.streakData.updatedTimestamp)} ${(data.hasPlus ? "\n 是尊贵的 Plus 用户。" : "")}
 ---
-${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！(≧∇≦)ﾉ" : "Ta 今天还没有刷题呢，赶紧去续杯吧～(´･ω･)ﾉ(._.`)"}
+${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！(≧≧∇≦≦)ﾉﾉ" : "Ta 今天还没有刷题呢，赶紧去续杯吧～(´･ω･)ﾉﾉ(._.`)"}
 ---
 输入"streak${username? " " + username : ""}"获取详细连胜信息。`;
 
@@ -437,7 +349,7 @@ ${isTimestampToday(data.streakData.updatedTimestamp) ? "Ta 今天续杯成功！
 
     // 定义 duolingo/streak 命令
     ctx.command('duolingo/streak <username:string>')
-      .action(async ({ session }, username) => {
+        .action(async ({ session }, username) => {
             let userId: number;
 
             if (!username) {
@@ -478,7 +390,7 @@ EXP 目标：${streakData.xpGoal}，向着目标冲呀！(ง・̀_・́)ง`;
 
     // 定义 duolingo/bind 命令
     ctx.command('duolingo/bind <username:string>')
-      .action(async ({ session }, username) => {
+        .action(async ({ session }, username) => {
             // 获取用户 QQ ID
             const userId = Number(session.event.user.id);
 
@@ -504,22 +416,21 @@ EXP 目标：${streakData.xpGoal}，向着目标冲呀！(ง・̀_・́)ง`;
                 lastweek_exp: 0 // 初始化上周经验
             });
 
-            return `绑定成功！🎉
+            return `绑定成功！🎉🎉
 QQ 号：${userId}
 Duolingo 用户名：${username}
 对应 ID：${duolingoId}`;
         });
 
     ctx.command('duolingo/update', { authority: 3 })
-      .action(async ({ session }) => {
+        .action(async ({ session }) => {
             updateUserExperience(ctx);
             return "更新操作成功";
-      });
+        });
     
     ctx.command('duolingo/calendar [username:string]')
         .alias('cal', 'cld', 'exp')
         .action(async ({ session }, username) => {
-
             session?.send("少女祈祷中...")
 
             let userId: number;
@@ -549,13 +460,12 @@ Duolingo 用户名：${username}
             let template: string = `<message>${name} 的经验值日历：</message>`;
             XpSummaries.summaries.forEach(summary => {
                 const date = convertTimestampToChineseDate(summary.date);
-                template += `<message>{summary.numSessions ? '✅' :' ❌'} 日期: ${date} (${getWeekday(summary.date)})\n`;
+                template += `<message>${summary.numSessions ? '✅' :' ❌❌'} 日期: ${date} (${getWeekday(summary.date)})\n`;
                 template += `  - 获得经验值: ${summary.gainedXp ? summary.gainedXp : '无'}\n`;
                 template += `  - 内卷次数: ${summary.numSessions ? summary.numSessions : '无'}\n`;
                 template += `  - 总内卷时间: ${summary.totalSessionTime ? summary.totalSessionTime : '无'}</message>`;
             });
             template += `<message>今天也不要忘记内卷哦 ～(ง・̀_・́)ง</message>`
             return `<message forward>${template}</message>`;
-
         });
 }
